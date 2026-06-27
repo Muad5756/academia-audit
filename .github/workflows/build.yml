@@ -72,12 +72,13 @@ jobs:
 
       - name: Verify — hook symbols present (nm)
         run: |
-          echo "=== exported symbols ==="
-          nm -gU AcademiaAudit.dylib | grep -E \
+          echo "=== all defined symbols (including static) ==="
+          # -U: exclude undefined, no -g so static/local symbols are included
+          nm -U AcademiaAudit.dylib | grep -E \
             "academia_audit_init|audit_log|hook_stat|hook_lstat|hook_access|hook_fopen|hook_ptrace|hook_dataTask|hook_SecTrust"
           echo ""
-          echo "=== symbol count ==="
-          nm -gU AcademiaAudit.dylib | wc -l
+          echo "=== total defined symbol count ==="
+          nm -U AcademiaAudit.dylib | wc -l
 
       - name: Verify — xtool inspect (if available)
         run: |
