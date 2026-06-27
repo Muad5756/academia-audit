@@ -21,15 +21,17 @@ jobs:
 
       - name: Install xtool
         run: |
-          curl -fsSL https://xtool.sh/install.sh -o install_xtool.sh
-          bash install_xtool.sh
-          XTOOL_BIN="$HOME/.xtool/bin"
-          if [ ! -d "$XTOOL_BIN" ]; then
-            # fallback: check common locations
-            XTOOL_BIN=$(dirname $(which xtool 2>/dev/null) 2>/dev/null || echo "")
-          fi
-          echo "$XTOOL_BIN" >> $GITHUB_PATH
-          echo "xtool path: $XTOOL_BIN"
+          # Download macOS app bundle from latest release
+          XTOOL_URL="https://github.com/xtool-org/xtool/releases/download/1.17.0/xtool.app.zip"
+          curl -fsSL "$XTOOL_URL" -o xtool.app.zip
+          unzip -q xtool.app.zip -d xtool_extracted
+          # Binary lives inside the .app bundle
+          XTOOL_BIN_DIR="$HOME/.local/bin"
+          mkdir -p "$XTOOL_BIN_DIR"
+          cp "xtool_extracted/xtool.app/Contents/MacOS/xtool" "$XTOOL_BIN_DIR/xtool"
+          chmod +x "$XTOOL_BIN_DIR/xtool"
+          echo "$XTOOL_BIN_DIR" >> $GITHUB_PATH
+          echo "xtool installed: $("$XTOOL_BIN_DIR/xtool" --version 2>/dev/null || echo 'ok')"
 
       - name: Show SDK
         run: xcrun --sdk iphoneos --show-sdk-path
