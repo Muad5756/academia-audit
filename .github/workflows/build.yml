@@ -7,22 +7,36 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14        # Apple Silicon — compiles arm64 natively
+    runs-on: macos-14        # Apple Silicon — arm64 native
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ldid
-        run: brew install ldid
+      - name: Install tools
+        run: |
+          brew install ldid
+          # insert_dylib — for patching IPA binaries
+          brew install insert_dylib 2>/dev/null || true
 
-      - name: Show SDK path
+      - name: Install xtool
+        run: |
+          curl -fsSL https://xtool.sh/install.sh -o install_xtool.sh
+          bash install_xtool.sh
+          XTOOL_BIN="$HOME/.xtool/bin"
+          if [ ! -d "$XTOOL_BIN" ]; then
+            # fallback: check common locations
+            XTOOL_BIN=$(dirname $(which xtool 2>/dev/null) 2>/dev/null || echo "")
+          fi
+          echo "$XTOOL_BIN" >> $GITHUB_PATH
+          echo "xtool path: $XTOOL_BIN"
+
+      - name: Show SDK
         run: xcrun --sdk iphoneos --show-sdk-path
 
       - name: Compile AcademiaAudit.dylib
         run: |
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-
           xcrun --sdk iphoneos clang \
             -arch arm64 \
             -isysroot "$SDK" \
@@ -42,13 +56,38 @@ jobs:
       - name: Fake-sign with ldid
         run: ldid -S AcademiaAudit.dylib
 
-      - name: Verify binary
+      # ── xtool verification ──────────────────────────────────────────────────
+      - name: Verify — binary type and arch (otool)
         run: |
+          echo "=== file ==="
           file AcademiaAudit.dylib
-          ls -lh AcademiaAudit.dylib
+          echo ""
+          echo "=== otool -hv (must show MH_DYLIB + ARM64) ==="
+          otool -hv AcademiaAudit.dylib
+          echo ""
+          echo "=== otool -L (linked frameworks) ==="
           otool -L AcademiaAudit.dylib
 
-      - name: Upload artifact
+      - name: Verify — hook symbols present (nm)
+        run: |
+          echo "=== exported symbols ==="
+          nm -gU AcademiaAudit.dylib | grep -E \
+            "academia_audit_init|audit_log|hook_stat|hook_lstat|hook_access|hook_fopen|hook_ptrace|hook_dataTask|hook_SecTrust"
+          echo ""
+          echo "=== symbol count ==="
+          nm -gU AcademiaAudit.dylib | wc -l
+
+      - name: Verify — xtool inspect (if available)
+        run: |
+          if command -v xtool &>/dev/null; then
+            echo "xtool version: $(xtool --version 2>/dev/null || echo 'n/a')"
+            # xtool can't inspect dylibs directly but confirms install succeeded
+            xtool devices 2>/dev/null || echo "(no device connected in CI — expected)"
+          else
+            echo "xtool not in PATH, skipping"
+          fi
+
+      - name: Upload AcademiaAudit.dylib
         uses: actions/upload-artifact@v4
         with:
           name: AcademiaAudit-dylib
